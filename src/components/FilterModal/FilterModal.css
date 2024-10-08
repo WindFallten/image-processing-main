@@ -1,0 +1,21 @@
+.filter-inputs {
+  margin-top: 1em;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.filter-input {
+  flex: 1 0 calc(33.333% - 5px);
+}
+.filter-options {
+  width: 100%;
+}
+.filter-btns {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.preview-container {
+  margin-top: 1em;
+  display: flex;
+}

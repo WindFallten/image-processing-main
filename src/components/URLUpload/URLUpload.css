@@ -1,0 +1,7 @@
+.url-input {
+  width: 100%;
+}
+.url-form {
+  display: flex;
+  gap: 1em;
+}

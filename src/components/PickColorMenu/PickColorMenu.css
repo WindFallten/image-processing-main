@@ -1,0 +1,10 @@
+.pick-color-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pick-color {
+  border: 1px solid grey;
+  width: 35px;
+  height: 60px;
+}

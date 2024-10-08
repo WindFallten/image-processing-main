@@ -1,0 +1,21 @@
+.main {
+    flex:1;
+    display: flex;
+    flex-direction: row;
+    align-content: center;
+    justify-content: center;
+    overflow: hidden;
+
+}
+
+.workspace{
+    display: flex;
+    flex: 1;
+}
+
+.settings__container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
