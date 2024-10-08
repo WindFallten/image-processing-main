@@ -40,7 +40,7 @@ const URLUpload = ({
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit">
-          Submit
+          Загрузить
         </Button>
       </Form.Item>
     </Form>

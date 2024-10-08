@@ -279,6 +279,7 @@ function App() {
               )}>
                 Загрузить изображение
               </Button>
+              <h1>Сигалев Г.Н. 211-323</h1>
             </header>
 
             <div className="work-panel">

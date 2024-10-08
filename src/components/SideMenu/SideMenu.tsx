@@ -43,7 +43,7 @@ const SideMenu = ({
           component={ PipetteSvg }
           hint={`Пипетка для извлечения цвета из изображения
             Выбор первого цвета: ЛКМ
-            Выбор второго цвета: Ctrl + ЛКМ
+            Выбор второго цвета: Shift + ЛКМ
           `}
           onIconButtonClick={ () => onCurrentToolChange(1) }
         />

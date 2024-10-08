@@ -147,7 +147,7 @@ const ChangeSizeModal = ({
           />
         </Flex>
         <Space>
-          Алгоритм интерполяции
+          Алгоритм интерполяции 
           <Select
               defaultValue="closestNeighbour"
               onChange={ (value) => setAlgorithm(value) }
