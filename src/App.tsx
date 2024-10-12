@@ -1,4 +1,4 @@
-import React, {ReactEventHandler, useEffect, useRef, useState} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import { Tabs, Modal, Button } from 'antd';
 import ChangeSizeModal from './components/ChangeSizeModal/ChangeSizeModal';
 import tabsItemsOnFunc from './utils/tabsItemsOnFunc';
@@ -31,13 +31,7 @@ interface ModalI {
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgViewRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef({
-    drag: false,
-    startX: 0,
-    startY: 0,
-    scrollX: 0,
-    scrollY: 0,
-  })
+
   const [loadedImage, setLoadedImage] = useState<LoadedImageI>({
     imageUri: '',
     imageOriginalWidth: 0,
@@ -171,7 +165,7 @@ function App() {
     })
   }
 
-  const getPixelInfo = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getPixelInfo = (e: React.MouseEvent) => {
     const [, ctx] = getCanvasNCtx(canvasRef);
     const rect = canvasRef.current!.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -233,13 +227,35 @@ function App() {
   };
 
   const downloadImage = () => {
-    changeImageScale(100);
-    const [canvas] = getCanvasNCtx(canvasRef);
-    const image = canvas.toDataURL();
-    const aDownloadLink = document.createElement('a');
-    aDownloadLink.download = 'canvas_image.png';
-    aDownloadLink.href = image;
-    aDownloadLink.click();
+    const originalImageWidth = loadedImage.imageOriginalWidth;
+    const originalImageHeight = loadedImage.imageOriginalHeight;
+
+    // Создаем временный canvas с исходными размерами изображения
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = originalImageWidth;
+    tempCanvas.height = originalImageHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+
+    if (!tempCtx) return;
+
+    // Получаем изображение
+    const imgPromise = imageUriToImgPromise(loadedImage.imageUri);
+    imgPromise.then((image) => {
+      // Очищаем временный canvas
+      tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+      // Рисуем изображение в исходном размере на временный canvas
+      tempCtx.drawImage(image, 0, 0, originalImageWidth, originalImageHeight);
+
+      // Преобразуем содержимое canvas в data URL (с высоким качеством)
+      const imageData = tempCanvas.toDataURL('image/png');
+
+      // Создаем ссылку для скачивания изображения
+      const aDownloadLink = document.createElement('a');
+      aDownloadLink.download = 'canvas_image.png';
+      aDownloadLink.href = imageData;
+      aDownloadLink.click();
+    });
   };
 
   const openModal = (
