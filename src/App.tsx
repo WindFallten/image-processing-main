@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, {ReactEventHandler, useEffect, useRef, useState} from 'react';
 import { Tabs, Modal, Button } from 'antd';
 import ChangeSizeModal from './components/ChangeSizeModal/ChangeSizeModal';
 import tabsItemsOnFunc from './utils/tabsItemsOnFunc';
@@ -8,7 +8,7 @@ import CurvesModal from './components/CurvesModal/CurvesModal';
 import FilterModal from './components/FilterModal/FilterModal';
 import getCanvasNCtx from './utils/getCanvasNCtx';
 import './App.css'
-import {Footer} from "./components/Footer/Footer.tsx";
+import { Footer } from "./components/Footer/Footer.tsx";
 
 export interface LoadedImageI {
   imageUri: string
@@ -45,6 +45,7 @@ function App() {
   });
 
   const [scale, setImageScale] = useState(100);
+
   const [pixelInfo, setPixelInfo] = useState<PixelInfoI>({
     rgb: [0, 0, 0],
     x: 0,
@@ -67,6 +68,36 @@ function App() {
     y: 0
   });
 
+  const offsetXRef = useRef(0);
+  const offsetYRef = useRef(0);
+
+  const isDraggingRef = useRef(false);
+  const lastMouseXRef = useRef(0);
+  const lastMouseYRef = useRef(0);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        renderImage(); // Перерисовываем изображение после изменения размера
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
 
   const imageUriToImgPromise = (uri: string): Promise<HTMLImageElement> => {
     return new Promise(function (resolve) {
@@ -82,7 +113,13 @@ function App() {
     const [canvas, ctx] = getCanvasNCtx(canvasRef);
     const imgPromise = imageUriToImgPromise(loadedImage.imageUri);
     imgPromise.then((img) => {
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(offsetXRef.current, offsetYRef.current);
+      const scaleMultiplier = scale / 100;
+      ctx.scale(scaleMultiplier, scaleMultiplier);
+      ctx.drawImage(img, 0, 0);
+      ctx.restore();
     });
   }
 
@@ -97,8 +134,8 @@ function App() {
         maxHeight / img.height
     );
 
-    canvas.width = img.width * scale;
-    canvas.height = img.height * scale;
+    canvas.width = maxWidth;
+    canvas.height = maxHeight;
 
     setImageScale(Math.floor(scale * 100));
     renderImage();
@@ -106,16 +143,25 @@ function App() {
 
   const changeImageScale = (scale: number) => {
     const [canvas,] = getCanvasNCtx(canvasRef);
-
-    const scaleMultiplier = scale / 100;
+    const ctx = canvas.getContext('2d');
+    if (ctx == null) return;
 
     const imgPromise = imageUriToImgPromise(loadedImage.imageUri);
-    imgPromise.then((img) => {
-      canvas.width = img.width * scaleMultiplier;
-      canvas.height = img.height * scaleMultiplier;
-      renderImage();
-    })
-  }
+    imgPromise.then((image) => {
+      const scaleMultiplier = scale / 100;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Отрисовываем изображение с нужным масштабом
+      ctx.drawImage(
+          image,
+          0, 0, // Координаты верхнего левого угла
+          image.width * scaleMultiplier, // Ширина с масштабом
+          image.height * scaleMultiplier // Высота с масштабом
+      );
+    });
+  };
+
+
 
   const uploadImageToCanvas = (file: File) => {
     closeModal();
@@ -127,18 +173,25 @@ function App() {
 
   const getPixelInfo = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const [, ctx] = getCanvasNCtx(canvasRef);
-    const mouseX = e.nativeEvent.offsetX;
-    const mouseY = e.nativeEvent.offsetY;
-    const p = ctx.getImageData(mouseX, mouseY, 1, 1).data;
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const scaleMultiplier = scale / 100;
+
+    // Корректируем координаты с учётом смещения и масштаба
+    const adjustedX = Math.ceil((mouseX - offsetXRef.current) / scaleMultiplier);
+    const adjustedY = Math.ceil((mouseY - offsetYRef.current) / scaleMultiplier);
+
+    const p = ctx.getImageData(adjustedX, adjustedY, 1, 1).data;
     return {
       p: p,
-      x: mouseX,
-      y: mouseY,
-    }
+      x: adjustedX,
+      y: adjustedY,
+    };
   }
 
-  const pixelInfoChange = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const {p, x, y} = getPixelInfo(e);
+  const pixelInfoChange = (e: React.MouseEvent) => {
+    const { p, x, y } = getPixelInfo(e);
     setPixelInfo({
       rgb: [p[0], p[1], p[2]],
       x: x,
@@ -146,9 +199,9 @@ function App() {
     })
   }
 
-  const colorChange = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const colorChange = (e: React.MouseEvent) => {
     if (currentTool !== 1) return;
-    const {p, x, y} = getPixelInfo(e);
+    const { p, x, y } = getPixelInfo(e);
     if (e.shiftKey) {
       return setColor2({
         rgb: [p[0], p[1], p[2]],
@@ -165,22 +218,23 @@ function App() {
 
   const onSliderChange = (scale: number) => {
     setImageScale(scale);
+    changeImageScale(scale);
   }
 
   const onCurrentToolChange = (id: number) => {
     setCurrentTool(id);
   }
 
-  const resizeImage =(newWidth: number, newHeight: number) => {
+  const resizeImage = (newWidth: number, newHeight: number) => {
     const [canvas, ctx] = getCanvasNCtx(canvasRef);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
     const newData = getNewDataNearestNeighbour(imageData, newWidth, newHeight);
-    setLoadedImage({...loadedImage, imageUri: newData})
+    setLoadedImage({ ...loadedImage, imageUri: newData })
   };
 
   const downloadImage = () => {
-    const [canvas] = getCanvasNCtx(canvasRef);
     changeImageScale(100);
+    const [canvas] = getCanvasNCtx(canvasRef);
     const image = canvas.toDataURL();
     const aDownloadLink = document.createElement('a');
     aDownloadLink.download = 'canvas_image.png';
@@ -200,53 +254,42 @@ function App() {
     })
   };
 
-  const onImgViewMouseDown = (e: React.MouseEvent) => {
-    const imgView = e.target as HTMLDivElement;
-    dragRef.current = {
-      ...dragRef.current,
-      drag: true,
-      startX: e.pageX - imgView.offsetLeft,
-      startY: e.pageY - imgView.offsetTop,
-    };
-    imgViewRef.current!.style.cursor = "grabbing";
+  const onCanvasMouseDown = (e: React.MouseEvent) => {
+    if (currentTool !== 0) return; // Проверяем, выбран ли инструмент "рука"
+
+    isDraggingRef.current = true;
+    lastMouseXRef.current = e.clientX;
+    lastMouseYRef.current = e.clientY;
+    canvasRef.current!.style.cursor = 'grabbing';
   };
 
-  const onImgViewMouseUp = () => {
-    dragRef.current.drag = false;
-    imgViewRef.current!.style.cursor = "auto";
-  }
+  const onCanvasMouseMove = (e: React.MouseEvent) => {
+    pixelInfoChange(e);
+    if (!isDraggingRef.current || currentTool !== 0) return;
 
-  const onImgViewMouseMove = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!dragRef.current.drag || !imgViewRef.current ) return;
+    const dx = e.clientX - lastMouseXRef.current;
+    const dy = e.clientY - lastMouseYRef.current;
 
-    const maxScrollLeft = imgViewRef.current.scrollWidth - imgViewRef.current.clientWidth;
-    const maxScrollTop = imgViewRef.current.scrollHeight - imgViewRef.current.clientHeight;
+    offsetXRef.current += dx;
+    offsetYRef.current += dy;
 
-    const imgView = e.target as HTMLDivElement;
-    const x = e.pageX - imgView.offsetLeft;
-    const y = e.pageY - imgView.offsetTop;
-    const walkX = (x - dragRef.current.startX);
-    const walkY = (y - dragRef.current.startY);
+    lastMouseXRef.current = e.clientX;
+    lastMouseYRef.current = e.clientY;
 
-    if ((imgViewRef.current.scrollLeft - walkX >= maxScrollLeft && maxScrollLeft !== 0) || (imgViewRef.current.scrollLeft - walkX < 0 && maxScrollLeft !== 0)) return
-    if ((imgViewRef.current.scrollTop - walkY >= maxScrollTop && maxScrollTop !== 0) || (imgViewRef.current.scrollTop - walkY < 0  && maxScrollTop !== 0)) return
+    renderImage(); // Перерисовываем изображение с новым смещением
+  };
 
-    imgViewRef.current.scrollLeft = dragRef.current.scrollX - walkX;
-    dragRef.current.scrollX = dragRef.current.scrollX - walkX;
-    dragRef.current.startX = x;
-
-    imgViewRef.current.scrollTop = dragRef.current.scrollY - walkY;
-    dragRef.current.scrollY = dragRef.current.scrollY - walkY;
-    dragRef.current.startY = y;
-  }
+  const onCanvasMouseUp = () => {
+    isDraggingRef.current = false;
+    canvasRef.current!.style.cursor = 'default';
+  };
 
   const closeModal = () => {
-    setModal({...modal, show: false});
+    setModal({ ...modal, show: false });
   }
 
   const changeLoadedImage = (data: string) => {
-    setLoadedImage({...loadedImage, imageUri: data});
+    setLoadedImage({ ...loadedImage, imageUri: data });
   };
 
   useEffect(() => {
@@ -254,123 +297,127 @@ function App() {
     imgPromise.then((img) => {
       renderImageFull(img);
       setLoadedImage({
-          ...loadedImage,
-          imageOriginalWidth: img.naturalWidth,
-          imageOriginalHeight: img.naturalHeight}
+            ...loadedImage,
+            imageOriginalWidth: img.naturalWidth,
+            imageOriginalHeight: img.naturalHeight
+          }
       );
     })
   }, [loadedImage.imageUri])
 
   useEffect(() => {
-    changeImageScale(scale);
+    renderImage();
   }, [scale])
 
 
   return (
       <>
         <div className="app">
-            <header className="header">
-              <Button className="download" type="primary" onClick={downloadImage}>
-                Сохранить
-              </Button>
-              <Button className="upload" type="primary" onClick={() => openModal(
-                  "Загрузить изображение",
-                  <Tabs defaultActiveKey="1" items={tabsItemsOnFunc(uploadImageToCanvas)}/>
-              )}>
-                Загрузить изображение
-              </Button>
-              <h1>Сигалев Г.Н. 211-323</h1>
-            </header>
+          <header className="header">
+            <Button className="download" type="primary" onClick={downloadImage}>
+              Сохранить
+            </Button>
+            <Button className="upload" type="primary" onClick={() => openModal(
+                "Загрузить изображение",
+                <Tabs defaultActiveKey="1" items={tabsItemsOnFunc(uploadImageToCanvas)} />
+            )}>
+              Загрузить изображение
+            </Button>
+            <h1>Сигалев Г.Н. 211-323</h1>
+          </header>
 
-            <div className="work-panel">
-              {currentTool === 0
-                  ?
-                  <div
-                      ref={imgViewRef}
-                      className="img-view"
-                      onMouseDown={onImgViewMouseDown}
-                      onMouseMove={onImgViewMouseMove}
-                      onMouseUp={onImgViewMouseUp}
-                  >
-                    <canvas
-                        ref={canvasRef}
-                        className='canvas'
-                        onMouseMove={pixelInfoChange}
-                        onClick={colorChange}
-                    />
-                  </div>
-                  :
-                  <div
-                      ref={imgViewRef}
-                      className="img-view"
-                  >
-                    <canvas
-                        ref={canvasRef}
-                        className='canvas'
-                        onMouseMove={pixelInfoChange}
-                        onClick={colorChange}
-                    />
-                  </div>
-              }
-              <SideMenu
-                  color1={color1}
-                  color2={color2}
-                  currentTool={currentTool}
-                  onCurrentToolChange={onCurrentToolChange}
-              >
-                <Button className="change-size" type="primary" onClick={() => openModal(
-                    "Изменение размера",
-                    <ChangeSizeModal
-                        width={loadedImage.imageOriginalWidth}
-                        height={loadedImage.imageOriginalHeight}
-                        onChangeSizeSubmit={(width, height) => {
-                          resizeImage(width, height);
+          <div className="work-panel">
+            {currentTool === 0
+                ?
+                <div
+                    ref={imgViewRef}
+                    className="img-view"
+                    onMouseMove={onCanvasMouseMove}
+                    onMouseDown={onCanvasMouseDown}
+                    onMouseUp={onCanvasMouseUp}
+                    onMouseLeave={onCanvasMouseUp} // Чтобы обработать случай, когда мышь выходит из canvas
+                >
+                  <canvas
+                      ref={canvasRef}
+                      className='canvas'
+                      onMouseMove={pixelInfoChange}
+                      onClick={colorChange}
+                  />
+                </div>
+                :
+                <div
+                    ref={imgViewRef}
+                    className="img-view"
+                >
+                  <canvas
+                      ref={canvasRef}
+                      className='canvas'
+                      onMouseMove={pixelInfoChange}
+                      onClick={colorChange}
+                  />
+                </div>
+            }
+            <SideMenu
+                color1={color1}
+                color2={color2}
+                currentTool={currentTool}
+                onCurrentToolChange={onCurrentToolChange}
+            >
+              <Button className="change-size" type="primary" onClick={() => openModal(
+                  "Изменение размера",
+                  <ChangeSizeModal
+                      width={loadedImage.imageOriginalWidth}
+                      height={loadedImage.imageOriginalHeight}
+                      onChangeSizeSubmit={(width, height) => {
+                        resizeImage(width, height);
+                        closeModal();
+                      }}
+                  />
+              )}>
+                Изменить размер
+              </Button>
+              <Button className="curves" type="primary" onClick={() => {
+                setImageScale(100);
+                openModal(
+                    "Коррекция градиента",
+                    <CurvesModal
+                        imageRef={canvasRef}
+                        onGammaCorrectionChange={(data) => {
+                          changeLoadedImage(data);
                           closeModal();
                         }}
                     />
-                )}>
-                  Изменить размер
-                </Button>
-                <Button className="curves" type="primary" onClick={() => {
-                  setImageScale(100);
-                  openModal(
-                      "Коррекция градиента",
-                      <CurvesModal
-                          imageRef={canvasRef}
-                          onGammaCorrectionChange={(data) => {
-                            changeLoadedImage(data);
-                            closeModal();
-                          }}
-                      />
-                  )
-                }}>
-                  Кривые
-                </Button>
-                <Button className="filtration" type="primary" onClick={() => {
-                  setImageScale(100);
-                  openModal(
-                      "Фильтрация",
-                      <FilterModal
-                          imageRef={canvasRef}
-                          onFilterChange={(data) => {
-                            changeLoadedImage(data);
-                            closeModal();
-                          }}
+                )
+              }}>
+                Кривые
+              </Button>
+              <Button className="filtration" type="primary" onClick={() => {
+                setImageScale(100);
+                openModal(
+                    "Фильтрация",
+                    <FilterModal
+                        imageRef={canvasRef}
+                        onFilterChange={(data) => {
+                          changeLoadedImage(data);
+                          closeModal();
+                        }}
 
-                      />
-                  )
-                }}>
-                  Фильтры
-                </Button>
-              </SideMenu>
-            </div>
+                    />
+                )
+              }}>
+                Фильтры
+              </Button>
+            </SideMenu>
           </div>
-          <Footer
-              loadedImage={loadedImage}
-              pixelInfo={pixelInfo}
-              scale={scale}
-              onSliderChange={onSliderChange}
-          />
+        </div>
+        <Footer
+            initialHeight={loadedImage.imageOriginalHeight}
+            initialWidth={loadedImage.imageOriginalWidth}
+            loadedImage={loadedImage}
+            pixelInfo={pixelInfo}
+            scale={scale}
+            onSliderChange={onSliderChange}
+        />
         <Modal
             title={modal.title}
             open={modal.show}
@@ -385,3 +432,5 @@ function App() {
 }
 
 export default App
+
+// З-я лаба, поправить работу руки (поработать с канвасом)

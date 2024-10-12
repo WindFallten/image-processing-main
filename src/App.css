@@ -30,6 +30,8 @@
   display: flex;
 }
 .canvas {
+  /* display: flex; */
+
   margin: auto;
 }
 .color-info {

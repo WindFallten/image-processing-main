@@ -11,7 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           theme={{
               token: {
                   // Seed Token
-                  colorPrimary: '#F4801A',
+                  colorPrimary: '#0f93ff',
                   borderRadius: 2,
 
                   // Alias Token

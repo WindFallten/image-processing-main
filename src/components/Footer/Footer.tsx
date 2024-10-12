@@ -1,4 +1,4 @@
-import {Slider}  from "antd";
+import { Slider } from "antd";
 import "./Footer.css"
 
 
@@ -27,13 +27,14 @@ export const Footer = ({ loadedImage, pixelInfo, scale, onSliderChange }: Footer
             </div>
             <div className="footer__pixel">
                 <div className="footer__color">
-                    <div style={{background: `rgb(${[...pixelInfo.rgb]})`}}
-                         className='footer__color-preview'/>
+                    <div style={{ background: `rgb(${[...pixelInfo.rgb]})` }}
+                        className='footer__color-preview' />
                     <span className="footer__color-value">{`RGB(${pixelInfo.rgb.join(', ')})`}</span>
                 </div>
                 <div className="footer__cursor">
                     <span>{`X: ${pixelInfo.x}`}</span>
                     <span>{`Y: ${pixelInfo.y}`}</span>
+                    {/* Поправить координаты под масштаб */}
                 </div>
             </div>
             <Slider
