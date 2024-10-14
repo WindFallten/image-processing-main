@@ -289,11 +289,26 @@ function App() {
         imageElement: img,
       };
       setCanvasImage(newCanvasImage);
-      renderCanvasImage();
+
+      // Обновляем масштаб и смещения
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const scaleX = canvas.width / img.width;
+        const scaleY = canvas.height / img.height;
+        const newScale = Math.min(scaleX, scaleY) * 100; // В процентах
+
+        setImageScale(newScale);
+
+        offsetXRef.current = (canvas.width - img.width * (newScale / 100)) / 2;
+        offsetYRef.current = (canvas.height - img.height * (newScale / 100)) / 2;
+
+        renderCanvasImage();
+      }
     };
     img.src = dataUrl;
   };
-  
+
+
 
 
   const downloadImage = () => {
@@ -448,6 +463,14 @@ function App() {
                   image={canvasImage!}
                   onFilterChange={(data) => {
                     changeCanvasImage(data);
+                    closeModal();
+                  }}
+                  onReset={() => {
+                    // Сбрасываем изображение на основном канвасе к исходному
+                    if (originalImage) {
+                      setCanvasImage(originalImage);
+                      renderCanvasImage();
+                    }
                     closeModal();
                   }}
                 />

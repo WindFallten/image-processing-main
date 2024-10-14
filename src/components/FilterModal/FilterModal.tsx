@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, InputNumber, Select } from 'antd';
 import './FilterModal.css';
-import makeImageMatrix from '../../utils/makeImageMatrix';
-import edgeMatrixPrepare from '../../utils/edgesMatrixPrepare';
-import type { ImageData as CustomImageData } from '../../App'; // Скорректируйте путь при необходимости
+import type { ImageData as CustomImageData } from '../../App';
 
 export interface FilterModalProps {
   image: CustomImageData;
   onFilterChange: (data: string) => void;
+  onReset: () => void; // Добавили onReset в пропсы
 }
 
 const FilterModal = ({
   image,
   onFilterChange,
+  onReset, // Деструктурируем onReset
 }: FilterModalProps) => {
   const previewRef = useRef<HTMLCanvasElement>(null);
   const [filterValues, setFilterValues] = useState<number[]>([0, 0, 0, 0, 1, 0, 0, 0, 0]);
@@ -23,31 +23,40 @@ const FilterModal = ({
     if (isPreview) {
       renderPreview();
     }
-  }, [isPreview]);
+  }, [isPreview, filterValues]);
 
   useEffect(() => {
-    if (isPreview) {
-      renderPreview();
+    switch (filterPreset) {
+      case 'base':
+        setFilterValues([0, 0, 0, 0, 1, 0, 0, 0, 0]);
+        break;
+      case 'raise':
+        setFilterValues([0, -1, 0, -1, 5, -1, 0, -1, 0]);
+        break;
+      case 'gauss':
+        setFilterValues([1, 2, 1, 2, 4, 2, 1, 2, 1]);
+        break;
+      case 'rect':
+        setFilterValues([1, 1, 1, 1, 1, 1, 1, 1, 1]);
+        break;
+      case 'edge-horizontal':
+        setFilterValues([1, 1, 1, 0, 0, 0, -1, -1, -1]);
+        break;
+      case 'edge-vertical':
+        setFilterValues([1, 0, -1, 1, 0, -1, 1, 0, -1]);
+        break;
+      default:
+        break;
     }
-  }, [filterValues]);
-
-  useEffect(() => {
-    if (filterPreset === 'base') setFilterValues([0, 0, 0, 0, 1, 0, 0, 0, 0]);
-    if (filterPreset === 'raise') setFilterValues([0, -1, 0, -1, 5, -1, 0, -1, 0]);
-    if (filterPreset === 'gauss') setFilterValues([1, 2, 1, 2, 4, 2, 1, 2, 1]);
-    if (filterPreset === 'rect') setFilterValues([1, 1, 1, 1, 1, 1, 1, 1, 1]);
   }, [filterPreset]);
-
-  const resetValues = () => {
-    setFilterPreset('base');
-    setFilterValues([0, 0, 0, 0, 1, 0, 0, 0, 0]);
-  };
 
   const filterOptions = [
     { value: 'base', label: 'Тождественное отображение' },
     { value: 'raise', label: 'Повышение резкости' },
     { value: 'gauss', label: 'Фильтр Гаусса' },
     { value: 'rect', label: 'Прямоугольное размытие' },
+    { value: 'edge-horizontal', label: 'Горизонтальный детектор краёв' },
+    { value: 'edge-vertical', label: 'Вертикальный детектор краёв' },
   ];
 
   const onFilterOptionsChange = (value: string) => {
@@ -64,72 +73,84 @@ const FilterModal = ({
   };
 
   const arrayToMatrix = (array: number[]) => {
-    let matrix = [
-      [...array.slice(0, 3)],
-      [...array.slice(3, 6)],
-      [...array.slice(6, 9)],
+    const matrix = [
+      [...array.slice(0, 3)], // Верхняя строка
+      [...array.slice(3, 6)], // Средняя строка
+      [...array.slice(6, 9)], // Нижняя строка
     ];
-    if (JSON.stringify(array) === JSON.stringify([1, 2, 1, 2, 4, 2, 1, 2, 1])) {
-      matrix = matrix.map((el) => el.map((e) => e / 16));
+
+    // Нормализация ядра для сохранения яркости
+    const sum = array.reduce((a, b) => a + b, 0);
+
+    if (sum !== 0 && filterPreset !== 'edge-horizontal' && filterPreset !== 'edge-vertical') {
+      // Для фильтров, отличных от детекторов краёв, нормализуем ядро
+      return matrix.map((row) => row.map((value) => value / sum));
     }
-    if (JSON.stringify(array) === JSON.stringify([1, 1, 1, 1, 1, 1, 1, 1, 1])) {
-      matrix = matrix.map((el) => el.map((e) => e / 9));
-    }
+
     return matrix;
   };
 
   const makeFilteredData = () => {
-    // Создаём временный canvas для работы с изображением
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = image.width;
-    tempCanvas.height = image.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    if (!tempCtx) return null;
+    try {
+      // Создаём временный canvas для работы с изображением
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = image.width;
+      tempCanvas.height = image.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) return null;
 
-    tempCtx.drawImage(image.imageElement, 0, 0);
+      tempCtx.drawImage(image.imageElement, 0, 0);
 
-    const canvasImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-    const srcData = canvasImageData.data;
+      const canvasImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      const srcData = canvasImageData.data;
 
-    const previewCanvas = previewRef.current;
-    if (!previewCanvas) return null;
-    const previewCtx = previewCanvas.getContext('2d');
-    if (!previewCtx) return null;
+      const newImageData = new Uint8ClampedArray(canvasImageData.width * canvasImageData.height * 4);
 
-    previewCanvas.width = tempCanvas.width;
-    previewCanvas.height = tempCanvas.height;
+      const kernel = arrayToMatrix(filterValues);
 
-    const newImageData = new Uint8ClampedArray(canvasImageData.width * canvasImageData.height * 4);
+      const height = canvasImageData.height;
+      const width = canvasImageData.width;
 
-    const kernel = arrayToMatrix(filterValues);
+      // Обрабатываем каждый пиксель
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let R = 0;
+          let G = 0;
+          let B = 0;
 
-    const height = canvasImageData.height;
-    const width = canvasImageData.width;
+          // Применяем ядро
+          for (let ky = -1; ky <= 1; ky++) {
+            for (let kx = -1; kx <= 1; kx++) {
+              const px = x + kx;
+              const py = y + ky;
 
-    let imageMatrix = makeImageMatrix(srcData, width);
-    imageMatrix = edgeMatrixPrepare(imageMatrix, width, height);
+              // Обработка границ изображения
+              const clampedX = Math.min(width - 1, Math.max(0, px));
+              const clampedY = Math.min(height - 1, Math.max(0, py));
 
-    let pos = 0;
-    for (let y = 2; y <= height + 1; y++) {
-      for (let x = 8; x <= width * 4 + 4; x += 4) {
-        let R = 0;
-        let G = 0;
-        let B = 0;
-        for (let s = -1; s <= 1; s++) {
-          for (let t = -1; t <= 1; t++) {
-            R += kernel[s + 1][t + 1] * imageMatrix[y + t][x - 3 + s * 4];
-            G += kernel[s + 1][t + 1] * imageMatrix[y + t][x - 2 + s * 4];
-            B += kernel[s + 1][t + 1] * imageMatrix[y + t][x - 1 + s * 4];
+              const offset = (clampedY * width + clampedX) * 4;
+
+              const weight = kernel[ky + 1][kx + 1];
+
+              R += srcData[offset] * weight;
+              G += srcData[offset + 1] * weight;
+              B += srcData[offset + 2] * weight;
+            }
           }
+
+          const destOffset = (y * width + x) * 4;
+          newImageData[destOffset] = Math.min(Math.max(R, 0), 255);
+          newImageData[destOffset + 1] = Math.min(Math.max(G, 0), 255);
+          newImageData[destOffset + 2] = Math.min(Math.max(B, 0), 255);
+          newImageData[destOffset + 3] = srcData[destOffset + 3]; // Копируем альфа-канал
         }
-        newImageData[pos] = R;
-        newImageData[pos + 1] = G;
-        newImageData[pos + 2] = B;
-        newImageData[pos + 3] = 255;
-        pos += 4;
       }
+
+      return new ImageData(newImageData, canvasImageData.width, canvasImageData.height);
+    } catch (error) {
+      console.error('Ошибка в makeFilteredData:', error);
+      return null;
     }
-    return new ImageData(newImageData, canvasImageData.width, canvasImageData.height);
   };
 
   const renderPreview = () => {
@@ -160,6 +181,15 @@ const FilterModal = ({
 
   const handlePreview = () => {
     setIsPreview(!isPreview);
+  };
+
+  const resetValues = () => {
+    setFilterPreset('base');
+    setFilterValues([0, 0, 0, 0, 1, 0, 0, 0, 0]);
+    onReset(); // Вызываем onReset для сброса изображения на основном канвасе
+    if (isPreview) {
+      renderPreview(); // Обновляем предпросмотр
+    }
   };
 
   return (
