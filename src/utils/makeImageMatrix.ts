@@ -1,14 +1,13 @@
 export default function makeImageMatrix(srcData: Uint8ClampedArray, width: number) {
   const imageMatrix: number[][] = [];
+  const height = srcData.length / (width * 4);
 
-  for (let y = 1; y <= srcData.length / (width * 4); y++) {
+  for (let y = 0; y < height; y++) {
     imageMatrix[y] = [];
-    let x = 1;
-    for (let i = width * 4 * (y - 1); i < width * 4 * y; i++) {
-      imageMatrix[y][x] = srcData[i];
-      x += 1;
+    for (let x = 0; x < width * 4; x++) {
+      imageMatrix[y][x] = srcData[y * width * 4 + x];
     }
   }
-  
+
   return imageMatrix;
 }

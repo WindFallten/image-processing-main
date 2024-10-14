@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button, Checkbox, InputNumber, Select } from 'antd';
-import getCanvasNCtx from '../../utils/getCanvasNCtx';
 import './FilterModal.css';
 import makeImageMatrix from '../../utils/makeImageMatrix';
 import edgeMatrixPrepare from '../../utils/edgesMatrixPrepare';
+import type { ImageData as CustomImageData } from '../../App'; // Скорректируйте путь при необходимости
 
 export interface FilterModalProps {
-  imageRef: React.RefObject<HTMLCanvasElement>
+  image: CustomImageData;
   onFilterChange: (data: string) => void;
 }
 
 const FilterModal = ({
-  imageRef,
+  image,
   onFilterChange,
 }: FilterModalProps) => {
   const previewRef = useRef<HTMLCanvasElement>(null);
-  const [filterValues, setFilterValues] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const [filterValues, setFilterValues] = useState<number[]>([0, 0, 0, 0, 1, 0, 0, 0, 0]);
   const [isPreview, setIsPreview] = useState(false);
   const [filterPreset, setFilterPreset] = useState('base');
 
@@ -23,7 +23,7 @@ const FilterModal = ({
     if (isPreview) {
       renderPreview();
     }
-  }, [isPreview])
+  }, [isPreview]);
 
   useEffect(() => {
     if (isPreview) {
@@ -38,7 +38,6 @@ const FilterModal = ({
     if (filterPreset === 'rect') setFilterValues([1, 1, 1, 1, 1, 1, 1, 1, 1]);
   }, [filterPreset]);
 
-  // Убрать поля по Enter(done) , и исправить порядок фильтрации (повернуть в матрице)
   const resetValues = () => {
     setFilterPreset('base');
     setFilterValues([0, 0, 0, 0, 1, 0, 0, 0, 0]);
@@ -49,41 +48,56 @@ const FilterModal = ({
     { value: 'raise', label: 'Повышение резкости' },
     { value: 'gauss', label: 'Фильтр Гаусса' },
     { value: 'rect', label: 'Прямоугольное размытие' },
-  ]
+  ];
 
   const onFilterOptionsChange = (value: string) => {
     setFilterPreset(value);
-  }
+  };
 
-  const onFilterInputChange = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    const value = parseInt((e.target as HTMLInputElement).value);
-    setFilterValues([...filterValues.slice(0, index), value, ...filterValues.slice(index + 1)])
-  }
+  const onFilterInputChange = (value: number | null, index: number) => {
+    if (value === null) return;
+    setFilterValues([
+      ...filterValues.slice(0, index),
+      value,
+      ...filterValues.slice(index + 1),
+    ]);
+  };
 
   const arrayToMatrix = (array: number[]) => {
     let matrix = [
       [...array.slice(0, 3)],
       [...array.slice(3, 6)],
       [...array.slice(6, 9)],
-    ]
-    if (JSON.stringify(array) == JSON.stringify([1, 2, 1, 2, 4, 2, 1, 2, 1])) {
+    ];
+    if (JSON.stringify(array) === JSON.stringify([1, 2, 1, 2, 4, 2, 1, 2, 1])) {
       matrix = matrix.map((el) => el.map((e) => e / 16));
     }
-    if (JSON.stringify(array) == JSON.stringify([1, 1, 1, 1, 1, 1, 1, 1, 1])) {
+    if (JSON.stringify(array) === JSON.stringify([1, 1, 1, 1, 1, 1, 1, 1, 1])) {
       matrix = matrix.map((el) => el.map((e) => e / 9));
     }
     return matrix;
-  }
+  };
 
   const makeFilteredData = () => {
-    const [canvas, ctx] = getCanvasNCtx(imageRef);
-    const canvasImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const srcData = canvasImageData.data
+    // Создаём временный canvas для работы с изображением
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = image.width;
+    tempCanvas.height = image.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return null;
 
-    const [previewCanvas] = getCanvasNCtx(previewRef);
+    tempCtx.drawImage(image.imageElement, 0, 0);
 
-    previewCanvas.height = canvas.height;
-    previewCanvas.width = canvas.width;
+    const canvasImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const srcData = canvasImageData.data;
+
+    const previewCanvas = previewRef.current;
+    if (!previewCanvas) return null;
+    const previewCtx = previewCanvas.getContext('2d');
+    if (!previewCtx) return null;
+
+    previewCanvas.width = tempCanvas.width;
+    previewCanvas.height = tempCanvas.height;
 
     const newImageData = new Uint8ClampedArray(canvasImageData.width * canvasImageData.height * 4);
 
@@ -115,24 +129,38 @@ const FilterModal = ({
         pos += 4;
       }
     }
-    return new ImageData(newImageData, canvas.width, canvas.height);
-  }
+    return new ImageData(newImageData, canvasImageData.width, canvasImageData.height);
+  };
 
   const renderPreview = () => {
-    const [, previewCtx] = getCanvasNCtx(previewRef);
     const tempImageData = makeFilteredData();
-    previewCtx.putImageData(tempImageData, 0, 0);
-  }
+    if (!tempImageData) return;
+    const previewCanvas = previewRef.current;
+    if (!previewCanvas) return;
+    const previewCtx = previewCanvas.getContext('2d');
+    if (previewCtx) {
+      previewCanvas.width = tempImageData.width;
+      previewCanvas.height = tempImageData.height;
+      previewCtx.putImageData(tempImageData, 0, 0);
+    }
+  };
 
   const applyFiltration = () => {
-    const [previewCanvas] = getCanvasNCtx(previewRef);
-    renderPreview();
-    onFilterChange(previewCanvas.toDataURL());
-  }
+    const tempImageData = makeFilteredData();
+    if (!tempImageData) return;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = tempImageData.width;
+    tempCanvas.height = tempImageData.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
+
+    tempCtx.putImageData(tempImageData, 0, 0);
+    onFilterChange(tempCanvas.toDataURL());
+  };
 
   const handlePreview = () => {
     setIsPreview(!isPreview);
-  }
+  };
 
   return (
     <div className='filter-modal'>
@@ -140,74 +168,32 @@ const FilterModal = ({
         className='filter-options'
         defaultValue='base'
         value={filterPreset}
-        onChange={(value) => onFilterOptionsChange(value)}
+        onChange={onFilterOptionsChange}
         options={filterOptions}
       />
       <div className="filter-inputs">
-        <InputNumber
-          value={filterValues[0]}
-          onChange={(e) => onFilterInputChange(e, 0)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[1]}
-          onChange={(e) => onFilterInputChange(e, 1)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[2]}
-          onChange={(e) => onFilterInputChange(e, 2)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[3]}
-          onChange={(e) => onFilterInputChange(e, 3)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[4]}
-          onChange={(e) => onFilterInputChange(e, 4)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[5]}
-          onChange={(e) => onFilterInputChange(e, 5)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[6]}
-          onChange={(e) => onFilterInputChange(e, 6)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[7]}
-          onChange={(e) => onFilterInputChange(e, 7)}
-          className='filter-input'
-        />
-        <InputNumber
-          value={filterValues[8]}
-          onChange={(e) => onFilterInputChange(e, 8)}
-          className='filter-input'
-        />
+        {filterValues.map((value, index) => (
+          <InputNumber
+            key={index}
+            value={value}
+            onChange={(value) => onFilterInputChange(value, index)}
+            className='filter-input'
+          />
+        ))}
       </div>
-      <div className="preview-container">
-        <canvas
-          ref={previewRef}
-          className='preview'
-          style={{
-            height: !isPreview ? 0 : ''
-          }}
-        />
+      <div
+        className="preview-container"
+        style={{ display: isPreview ? 'block' : 'none' }}
+      >
+        <canvas ref={previewRef} className='preview' />
       </div>
       <div className="filter-btns">
-        <Button type='primary' onClick={() => {
-          applyFiltration();
-        }}>Изменить</Button>
-        <Checkbox checked={isPreview} onClick={handlePreview}>Предпросмотр</Checkbox>
+        <Button type='primary' onClick={applyFiltration}>Изменить</Button>
+        <Checkbox checked={isPreview} onChange={handlePreview}>Предпросмотр</Checkbox>
         <Button onClick={resetValues}>Сбросить</Button>
       </div>
     </div>
-  )
+  );
 };
 
 export default FilterModal;
